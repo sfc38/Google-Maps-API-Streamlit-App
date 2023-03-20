@@ -5,11 +5,12 @@ import folium
 from folium.plugins import MiniMap
 from streamlit_folium import folium_static
 import math
+import os
 
-
-import credentials
-google_API_KEY = credentials.google_API_KEY
-
+if os.path.isfile("credentials.py"):
+    import credentials
+    google_API_KEY = credentials.google_API_KEY
+    
 
 with st.container():
     # Add a title to the app

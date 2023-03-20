@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
 import requests
-import credentials
 import folium
 from folium.plugins import MiniMap
 from streamlit_folium import folium_static
 import math
+import os
 
+if os.path.isfile("credentials.py"):
+    import credentials
+    google_API_KEY = credentials.google_API_KEY
+    
 
 with st.container():
     # Add a title to the app
@@ -70,9 +74,9 @@ with st.container():
                 return col
         return None
     
-    # Take user input bulk
-    text1 = "To add an address, type the address ti the box and click 'Add Address'. To add multiple addresses do the same steps for each new one. You can also bulk upload addresses with a CSV file."
-    text2 = "Choose a CSV file that has the addresses, one column should have 'Adress' header. Note: You can manually enter the addresses as well."
+    # Take user input bulk (addresses)
+    text1 = "To add an address, type the address the box below and click 'Add Address'. To add multiple addresses, do the same steps for each new one. You can also bulk upload addresses with a CSV file."
+    text2 = "Choose a CSV file that has the addresses, one column should have 'Address' header. Note: You can manually enter the addresses as well."
     
     st.write(text1)
     uploaded_file = st.file_uploader(text2, type="csv")
@@ -94,9 +98,6 @@ with st.container():
             print("No address column found")
 
         add_from_file(address_list)
-    
-    
-    
 
     # Take user input (addresses)
     user_input = st.text_input("Enter an address and click 'Add Address' button:")
@@ -115,19 +116,7 @@ with st.container():
     # Display the addresses
     display_addresses()
         
-     
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-
 with st.container():
     # Add a subheader
     st.subheader("Step 2: Converting Addresses to Geographic Coordinates")
@@ -152,7 +141,7 @@ with st.container():
     if 'input_list' in st.session_state:     
         lat_lng_list = []
         for address in st.session_state.input_list:
-            latitude, longitude = geocode_address(address, credentials.google_API_KEY)
+            latitude, longitude = geocode_address(address, google_API_KEY)
             if latitude == None:
                 st.warning("Please enter a valid address. Remove the invalid address from the list.")
                 break          
@@ -188,7 +177,7 @@ with st.container():
                          overlay=True, 
                          control=True, 
                          subdomains=["mt0", "mt1", "mt2", "mt3"], 
-                         api_key=credentials.google_API_KEY).add_to(m)
+                         api_key=google_API_KEY).add_to(m)
 
         # Add markers for each location in the list
         for lat, lon in locations:
@@ -213,7 +202,8 @@ with st.container():
             locations = df["lat_lng"]
             center_lat, center_lon = find_center(locations)
             plot_map(locations, center_lat, center_lon)
-            
+      
+    
 with st.container():
     # Add a subheader
     st.subheader("Step 4: Find the Center and Haversine Distances from Addresses")
@@ -255,15 +245,13 @@ with st.container():
         lat1, lon1 = row['lat_lng']
         return haversine_distance(lat1, lon1, center_lat, center_lon)
 
-    
     if 'input_list' in st.session_state:
         if len(df) > 0: 
-            center_address = reverse_geocode(center_lat, center_lon, credentials.google_API_KEY)
+            center_address = reverse_geocode(center_lat, center_lon, google_API_KEY)
             st.write("The center of the address is:")
             st.write(center_address)
             st.write("Note: The center is the red pin on the map.")
-            
-            
+               
             df['distance_to_center'] = df.apply(calculate_distance, args=(center_lat, center_lon), axis=1)
             df['unit'] = 'miles'
             st.write(df)
