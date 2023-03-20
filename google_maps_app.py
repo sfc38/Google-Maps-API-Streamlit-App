@@ -10,6 +10,8 @@ import os
 if os.path.isfile("credentials.py"):
     import credentials
     google_API_KEY = credentials.google_API_KEY
+else:
+    google_API_KEY = st.secrets["google_API_KEY"]
     
 
 with st.container():
