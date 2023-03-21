@@ -1,28 +1,31 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import requests
 import folium
-from folium.plugins import MiniMap
 from streamlit_folium import folium_static
 import math
 import os
+from sklearn.cluster import KMeans
+from random import random
+import plotly.graph_objs as go
 
+
+# upload the google maps api key
 if os.path.isfile("credentials.py"):
     import credentials
     google_API_KEY = credentials.google_API_KEY
 else:
     google_API_KEY = st.secrets["google_API_KEY"]
     
-
+# title and introduction
 with st.container():
-    # Add a title to the app
     st.title("Google Maps API Demo Streamlit App")
     st.write("Hello! This is Fatih. Welcome to my App. The purpose of this application is to explore the Google Maps API.")  
 
-                                                     
+# user input and display                                       
 with st.container():
-    # Add a subheader
-    st.subheader("Step 1: Enter Addresses")
+    st.subheader("1. Enter Addresses")
     
     def add():
         if user_input:  # Check if user_input is not empty
@@ -52,7 +55,7 @@ with st.container():
         if 'input_list' in st.session_state:
             for i, input_item in enumerate(st.session_state.input_list):
                 st.checkbox(input_item, key=f"checkbox_{i}")  
-
+    
     def get_selected_indexes():
         indexes = []
         if 'input_list' in st.session_state:
@@ -60,7 +63,7 @@ with st.container():
                 if st.session_state[f"checkbox_{i}"]:
                     indexes.append(i)
         return indexes
-
+    
     def remove_by_indexes(indexes, input_list):
         return [item for i, item in enumerate(input_list) if i not in indexes]
 
@@ -69,7 +72,7 @@ with st.container():
         if 'input_list' in st.session_state:
             st.session_state.input_list = remove_by_indexes(indexes, st.session_state.input_list)
         unselect_all()
-        
+    
     def find_matching_column(df, possible_names):
         for col in df.columns:
             if col in possible_names:
@@ -77,8 +80,11 @@ with st.container():
         return None
     
     # Take user input bulk (addresses)
-    text1 = "To add an address, type the address the box below and click 'Add Address'. To add multiple addresses, do the same steps for each new one. You can also bulk upload addresses with a CSV file."
-    text2 = "Choose a CSV file that has the addresses, one column should have 'Address' header. Note: You can manually enter the addresses as well."
+    text1 = '''To add an address, type the address the box below and click 'Add Address'. 
+    To add multiple addresses, do the same steps for each new one. 
+    You can also bulk upload addresses with a CSV file.'''
+    text2 = '''Choose a CSV file that has the addresses, one column should have 'Address' header. 
+    Note: You can manually enter the addresses as well.'''
     
     st.write(text1)
     uploaded_file = st.file_uploader(text2, type="csv")
@@ -100,6 +106,15 @@ with st.container():
             print("No address column found")
 
         add_from_file(address_list)
+    
+    # NOTE: Remove this else part later or use another sample data
+    else:
+        if "input_list" not in st.session_state:
+            
+            df = pd.read_csv('sample_addresses.csv')
+            address_list = df['address'].tolist()
+            add_from_file(address_list)
+            st.warning("No file uploaded. Sample data used. Remove if desired.")
 
     # Take user input (addresses)
     user_input = st.text_input("Enter an address and click 'Add Address' button:")
@@ -118,11 +133,11 @@ with st.container():
     # Display the addresses
     display_addresses()
         
-        
+# convert to coordinates and display as df        
 with st.container():
-    # Add a subheader
-    st.subheader("Step 2: Converting Addresses to Geographic Coordinates")
+    st.subheader("2. Converting Addresses to Geographic Coordinates")
     
+    @st.cache_data
     def geocode_address(address, api_key):
         # URL encode the address
         encoded_address = requests.utils.quote(address)
@@ -155,61 +170,64 @@ with st.container():
         # Display the latitude and longitude of each address to the user
         st.write(df)
         
-        
+# show locations on map        
 with st.container():
-    # Add a subheader
-    st.subheader("Step 3: Show Addresses on Map")
+    st.subheader("3. Show Addresses on Map")
     
-    def find_center(locations):
-        center_lat = sum(lat for lat, _ in locations) / len(locations)
-        center_lon = sum(lon for _, lon in locations) / len(locations)
-        return center_lat, center_lon
-    
-    def plot_map(locations, center_lat, center_lon):
-        # Calculate the map bounds
-        south_west = [min(lat for lat, _ in locations) - 0.04, min(lon for _, lon in locations) - 0.04]
-        north_east = [max(lat for lat, _ in locations) + 0.04, max(lon for _, lon in locations) + 0.04]
-        map_bounds = [south_west, north_east]
-
+    def create_map():
         # Create the map with Google Maps
-        m = folium.Map(tiles=None)
+        map_obj = folium.Map(tiles=None)
         folium.TileLayer("https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", 
                          attr="google", 
                          name="Google Maps", 
                          overlay=True, 
                          control=True, 
-                         subdomains=["mt0", "mt1", "mt2", "mt3"], 
-                         api_key=google_API_KEY).add_to(m)
-
-        # Add markers for each location in the list
-        for lat, lon in locations:
-            folium.Marker([lat, lon]).add_to(m)
-            
-        folium.Marker([center_lat, center_lon], 
-                      icon=folium.Icon(color="red", icon=""), 
-                      popup="Center of the locations").add_to(m)
-
-        # # Add a minimap
-        # minimap = MiniMap()
-        # m.add_child(minimap)
-        
-        # Fit the map bounds to include all markers
-        m.fit_bounds(map_bounds)
-
-        # Display the map
-        folium_static(m)
+                         subdomains=["mt0", "mt1", "mt2", "mt3"]).add_to(map_obj)
+        return map_obj
     
+    def add_markers(map_obj, locations, popup_list=None):
+        if popup_list is  None:
+            # Add markers for each location in the DataFrame
+            for lat, lon in locations:
+                folium.Marker([lat, lon]).add_to(map_obj)
+        else:
+            for i in range(len(locations)):
+                lat, lon = locations[i]
+                popup = popup_list[i]
+                folium.Marker([lat, lon], popup=popup).add_to(map_obj)
+
+        # Fit the map bounds to include all markers
+        south_west = [min(lat for lat, _ in locations) - 0.02, min(lon for _, lon in locations) - 0.02]
+        north_east = [max(lat for lat, _ in locations) + 0.02, max(lon for _, lon in locations) + 0.02]
+        map_bounds = [south_west, north_east]
+        map_obj.fit_bounds(map_bounds)
+
+        return map_obj
+
     if 'input_list' in st.session_state:
         if len(df) > 0:
-            locations = df["lat_lng"]
-            center_lat, center_lon = find_center(locations)
-            plot_map(locations, center_lat, center_lon)
-      
-    
+            m = create_map()
+            m = add_markers(m, df['lat_lng'], df['address'])
+            folium_static(m)
+
+# find the center, show distances            
 with st.container():
     # Add a subheader
-    st.subheader("Step 4: Find the Center and Haversine Distances from Addresses")
+    st.subheader("4. Find the Center and Haversine Distances from Addresses")
+    st.write("Haversine distance measures the shortest distance between two locations on the Earth's surface, accounting for its curvature.")
     
+    # Print the instructions for sorting the table by distance
+    st.write('''The 'distance_center_miles' column in the table shows the distances between each address and the center location, 
+    measured in miles. To sort the addresses by distance, simply click on the header of the 'distance_center_miles' column.''')
+    
+    @st.cache_data
+    def calculate_center_coords(coords_list):
+        lat_mean = sum([coords[0] for coords in coords_list]) / len(coords_list)
+        lng_mean = sum([coords[1] for coords in coords_list])  / len(coords_list)
+        
+        return [round(lat_mean, 6), round(lng_mean, 6)]
+    
+    @st.cache_data
     def reverse_geocode(lat, lon, api_key):
         geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={api_key}"
         response = requests.get(geocode_url)
@@ -222,38 +240,225 @@ with st.container():
 
         return address
     
+    @st.cache_data
     def haversine_distance(lat1, lon1, lat2, lon2):
-        # Convert latitude and longitude from degrees to radians
-        lat1_rad = math.radians(lat1)
-        lon1_rad = math.radians(lon1)
-        lat2_rad = math.radians(lat2)
-        lon2_rad = math.radians(lon2)
+        # convert decimal degrees to radians
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
 
-        # Calculate the differences between latitudes and longitudes
-        delta_lat = lat2_rad - lat1_rad
-        delta_lon = lon2_rad - lon1_rad
+        # haversine formula
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        distance = 3956 * c  # radius of earth in miles
 
-        # Calculate the Haversine formula
-        a = math.sin(delta_lat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        # Convert the angular distance to miles
-        earth_radius_miles = 3958.8
-        distance_miles = earth_radius_miles * c
-
-        return distance_miles
-    
-    def calculate_distance(row, center_lat, center_lon):
-        lat1, lon1 = row['lat_lng']
-        return haversine_distance(lat1, lon1, center_lat, center_lon)
+        return distance
 
     if 'input_list' in st.session_state:
         if len(df) > 0: 
+            center_lat, center_lon = calculate_center_coords(df['lat_lng'])
             center_address = reverse_geocode(center_lat, center_lon, google_API_KEY)
-            st.write("The center of the address is:")
-            st.write(center_address)
-            st.write("Note: The center is the red pin on the map.")
-               
-            df['distance_to_center'] = df.apply(calculate_distance, args=(center_lat, center_lon), axis=1)
-            df['unit'] = 'miles'
+            text = '**The center location is:** <i>{}</i>'.format(center_address)
+            st.markdown(text, unsafe_allow_html=True)
+            
+            df['distance_center_miles'] = df['lat_lng'].apply(lambda x: haversine_distance(x[0], x[1], center_lat, center_lon))
             st.write(df)
+            
+# show center on the map            
+with st.container():       
+    st.subheader("5. Show Center of Locations on the Map")
+    st.write("The center is the red pin on the map.")
+    
+    def add_center_marker(map_obj, lat, lon, color='red', icon='star', popup=None):
+        new_marker = folium.Marker([lat, lon], icon=folium.Icon(color=color, icon=icon), popup=popup)
+        map_obj.add_child(new_marker)
+        
+        return map_obj
+    
+    def add_lines_to_center(map_obj, locations_col, center_lat, center_lon, color='red', group_name='Lines'):
+        line_group = folium.FeatureGroup(name=group_name)
+        for lat_lng in locations_col:
+            folium.PolyLine(locations=[lat_lng, [center_lat, center_lon]], color=color).add_to(line_group)
+        map_obj.add_child(line_group)
+        
+        return map_obj
+    
+    if 'input_list' in st.session_state:
+        if len(df) > 0:
+    
+            # Create the map and add markers
+            m = create_map()
+            m = add_markers(m, df['lat_lng'], df['address'])
+
+            # Add a center marker
+            center_lat, center_lon = calculate_center_coords(df['lat_lng'])
+            center_address = reverse_geocode(center_lat, center_lon, google_API_KEY)
+            m = add_center_marker(m, center_lat, center_lon, popup='This is the center: \n' + center_address)
+
+            # Add lines from each location to the center location as a feature group
+            m = add_lines_to_center(m, df['lat_lng'], center_lat, center_lon)
+
+            # Add a layer control to toggle marker and line groups
+            folium.LayerControl().add_to(m)
+
+            text = '**The center location is:** <i>{}</i>'.format(center_address)
+            st.markdown(text, unsafe_allow_html=True)
+
+            st.write("Check the table above to see distances between each address and the center location")
+
+            # Render the map in Streamlit
+            folium_static(m)
+    
+    
+# show center on the map            
+with st.container():       
+    st.subheader("6. Clustering Addresses Using K-Means Algorithm")
+    
+    st.write('''In this section, the addresses are clustered into groups using the K-Means algorithm. 
+    You can specify the number of groups that you want to divide the addresses into by using slider below.''')
+    
+    st.write('''K-means is an unsupervised machine learning algorithm that divides data into clusters. 
+    Its objective is to minimize the sum of squares of distances between data points and the center of the cluster they belong to.''')
+    
+    def cluster_latlng(coordinates_list, n_clusters):
+        # Convert the latitude and longitude coordinates to a NumPy array
+        X = np.array(coordinates_list)
+
+        # Initialize the KMeans object with the number of clusters
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+
+        # Fit the KMeans model to the data
+        kmeans.fit(X)
+
+        # Get the cluster labels for each data point
+        labels = kmeans.labels_
+
+        # Get the cluster centroids
+        centroids = kmeans.cluster_centers_
+
+        # Return the cluster labels and centroids
+        return labels, centroids
+    
+    def create_cluster_table(df, label_col):
+    
+        # Define the colorscale
+        n = df[label_col].nunique()
+        colorscale = []
+        for _ in range(n):
+            colorscale.append('rgba({},{},{},0.3)'.format(int(random()*255), 
+                                                          int(random()*255), 
+                                                          int(random()*255)))
+
+        # Map the colors to the cluster labels
+        colors = [colorscale[label] for label in df[label_col]]
+
+        # Define the table data
+        table_data = go.Table(
+            header=dict(values=list(df.columns), fill_color='rgba(200, 200, 200, 1)'),
+            cells=dict(values=[df[col] for col in df.columns], fill_color=[colors])
+        )
+
+        # Show the table
+        fig = go.Figure(data=table_data)
+        fig.update_layout(height=900)
+        st.plotly_chart(fig)
+        
+    def miles_to_meters(miles):
+        return miles * 1609.34
+    
+    def get_max_by_group(df, group_col, max_col):
+        return df.groupby(group_col)[max_col].max()
+    
+    if 'input_list' in st.session_state:
+        if len(df) > 0:
+    
+            # Define the default value for the slider
+            default_value = 4
+
+            # Set the default value to the length of the DataFrame if it's smaller
+            if len(df) < default_value:
+                default_value = len(df)
+
+            # Define the slider input with minimum and maximum values based on the DataFrame length
+            num_clusters = st.slider('Select the number of clusters from the slider:', min_value=2, max_value=len(df), value=default_value)
+            
+            # run the model
+            labels, centroids = cluster_latlng(df['lat_lng'].to_list(), num_clusters)
+            
+            # Create a success message
+            st.success('Clustering complete! View the results below. Number of clusters: {}'.format(num_clusters))
+            
+            df['cluster_label'] = labels
+            df['cluster_center'] = df['cluster_label'].apply(lambda x: [round(centroids[x][0], 6), round(centroids[x][1], 6)])
+            df = df.sort_values('cluster_label')
+            
+            # Show clustered table
+            create_cluster_table(df, 'cluster_label')
+            
+            # Calculate the distances from cluster centers
+            df['distance_cluster_center_miles'] = df.apply(lambda x: haversine_distance(x['lat_lng'][0], 
+                                                                            x['lat_lng'][1], 
+                                                                            x['cluster_center'][0], 
+                                                                            x['cluster_center'][1]), axis=1)
+            
+            st.write(df[['address', 'cluster_label', 'distance_cluster_center_miles']])
+            
+            max_distances = get_max_by_group(df, 'cluster_label', 'distance_cluster_center_miles')
+            
+            # Map with Circles
+            m = create_map()
+            m = add_markers(m, df['lat_lng'], df['address'])
+            
+            # Add cluster center
+            for i in range(len(centroids)):
+                c = centroids[i]
+                add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
+            
+            # Add circle markers for each centroid
+            for i in range(len(centroids)):
+                center = centroids[i]
+                radius = miles_to_meters(max_distances[i]) + 1000
+                folium.Circle(location=center, radius=radius, color='red', fill_color='red', fill_opacity=0.2).add_to(m)
+            
+            folium_static(m)
+            
+            
+            # Map with Lines
+            m = create_map()
+            m = add_markers(m, df['lat_lng'], df['address'])
+            
+            # Add cluster center
+            for i in range(len(centroids)):
+                c = centroids[i]
+                add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
+                
+            # Loop through the data and add lines from each address to its cluster center
+            for i in range(len(df)):
+                # Get the coordinates for the address and its cluster center
+                address_coords = df.loc[i, 'lat_lng']
+                center_coords = centroids[df.loc[i, 'cluster_label']]
+    
+                # Add a line from the address to its cluster center
+                folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
+        
+            folium_static(m)
+            
+# show center on the map            
+with st.container():       
+    st.subheader("7. What is the optimal number of clusters?")
+    
+    st.write('''Selecting the optimal number of clusters is crucial in K-means clustering, as it determines the structure of the resulting groups. 
+    The right number of clusters helps to ensure that the groups are meaningful and accurately reflect the patterns in the data. 
+    To determine the optimal number of clusters, two commonly used methods are used; the elbow method and silhouette score method.''')
+    
+    
+    st.markdown("#### Elbow method")
+    st.write('''The identification of the elbow point in a plot is subjective, and there is no specific rule for its definition. 
+    Typically, it is defined as the point on the curve where the rate of decrease in WSS starts to level off, forming an "elbow" shape. 
+    One way to identify it is to look for the point where the rate of decrease in WSS significantly slows down, forming an elbow-like shape. 
+    Another approach is to draw a line from the first point to the last point on the curve and identify the point 
+    on the curve farthest from this line, representing a significant change in the rate of decrease in WSS and considered the elbow point.''')
+    
+    
+    
+    
