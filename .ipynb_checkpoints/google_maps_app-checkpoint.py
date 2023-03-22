@@ -9,7 +9,16 @@ import os
 from sklearn.cluster import KMeans
 from random import random
 import plotly.graph_objs as go
+import matplotlib.pyplot as plt
+from sklearn.metrics import silhouette_score
 
+# Add a title to the sidebar
+st.sidebar.title("Welcome to my app!")
+
+# Add a note to the sidebar
+st.sidebar.write('''The slider below is used to select the number of clusters in Section 6 
+where clustering is applied. By adjusting the slider, you can specify the desired 
+number of groups to divide the addresses into.''')
 
 # upload the google maps api key
 if os.path.isfile("credentials.py"):
@@ -21,7 +30,7 @@ else:
 # title and introduction
 with st.container():
     st.title("Google Maps API Demo Streamlit App")
-    st.write("Hello! This is Fatih. Welcome to my App. The purpose of this application is to explore the Google Maps API.")  
+    st.write("Hello! This is Fatih. The purpose of this application is to explore the Google Maps API.")  
 
 # user input and display                                       
 with st.container():
@@ -129,7 +138,8 @@ with st.container():
         st.button('Unselect All', on_click=unselect_all)
     with cols[3]:
         st.button('Remove Selected', on_click=remove_selected)
-    
+
+with st.expander("Click to show/hide the addresses", expanded=True):        
     # Display the addresses
     display_addresses()
         
@@ -378,15 +388,39 @@ with st.container():
             # Set the default value to the length of the DataFrame if it's smaller
             if len(df) < default_value:
                 default_value = len(df)
+                
+            # Initialize session state
+            if "num_clusters" not in st.session_state:
+                st.session_state.num_clusters = default_value
+            
+            # this is to fix sync issue
+            rerun_flag = st.session_state.num_clusters
+                
+            # Define your sidebar slider
+            num_clusters_sidebar = st.sidebar.slider("Select the number of clusters:", min_value=2, max_value=len(df), 
+                                                     value=st.session_state.num_clusters,
+                                                     key='num_clusters_sidebar')
+            
+            # Update session state with the sidebar slider value
+            st.session_state.num_clusters = num_clusters_sidebar
+            if st.session_state.num_clusters != rerun_flag:
+                st.experimental_rerun()
 
             # Define the slider input with minimum and maximum values based on the DataFrame length
-            num_clusters = st.slider('Select the number of clusters from the slider:', min_value=2, max_value=len(df), value=default_value)
-            
+            num_clusters_main = st.slider('Select the number of clusters:', min_value=2, max_value=len(df), 
+                                         value=st.session_state.num_clusters,
+                                         key='num_clusters_main')
+            # Update session state with the sidebar slider value
+            st.session_state.num_clusters = num_clusters_main
+            if st.session_state.num_clusters != num_clusters_sidebar:
+                st.experimental_rerun()
+                
+
             # run the model
-            labels, centroids = cluster_latlng(df['lat_lng'].to_list(), num_clusters)
+            labels, centroids = cluster_latlng(df['lat_lng'].to_list(), num_clusters_main)
             
             # Create a success message
-            st.success('Clustering complete! View the results below. Number of clusters: {}'.format(num_clusters))
+            st.success('Clustering complete! View the results below. Number of clusters: {}'.format(num_clusters_main))
             
             df['cluster_label'] = labels
             df['cluster_center'] = df['cluster_label'].apply(lambda x: [round(centroids[x][0], 6), round(centroids[x][1], 6)])
@@ -451,14 +485,85 @@ with st.container():
     The right number of clusters helps to ensure that the groups are meaningful and accurately reflect the patterns in the data. 
     To determine the optimal number of clusters, two commonly used methods are used; the elbow method and silhouette score method.''')
     
-    
     st.markdown("#### Elbow method")
     st.write('''The identification of the elbow point in a plot is subjective, and there is no specific rule for its definition. 
     Typically, it is defined as the point on the curve where the rate of decrease in WSS starts to level off, forming an "elbow" shape. 
     One way to identify it is to look for the point where the rate of decrease in WSS significantly slows down, forming an elbow-like shape. 
     Another approach is to draw a line from the first point to the last point on the curve and identify the point 
     on the curve farthest from this line, representing a significant change in the rate of decrease in WSS and considered the elbow point.''')
+
+    def plot_elbow_method(coordinates_list):
+        # Load the dataset
+        X = np.array(coordinates_list)
+
+        # Define a range of k values to try
+        if len(coordinates_list) < 10:
+            n = len(coordinates_list)
+        else:
+            n = 10
+        k_values = range(1, n)
+
+        # Fit KMeans models for each k value and calculate the WSS
+        wss_values = []
+        for k in k_values:
+            model = KMeans(n_clusters=k).fit(X)
+            wss = model.inertia_
+            wss_values.append(wss)
+
+        # Plot the WSS values against the number of clusters
+        fig, ax = plt.subplots()
+        ax.plot(k_values, wss_values, 'bx-')
+        ax.set_xlabel('Number of clusters (k)')
+        ax.set_ylabel('Within-cluster sum of squares (WSS)')
+        ax.set_title('Elbow method for optimal k')
+
+        # Draw a line from the first point to the last point
+        line_x = [1, k_values[-1]]
+        line_y = [wss_values[0], wss_values[-1]]
+        ax.plot(line_x, line_y, 'r--')
+
+        # Find the point farthest away from the line
+        distances = []
+        for i in range(len(k_values)):
+            x = k_values[i]
+            y = wss_values[i]
+            distance = abs((line_y[1] - line_y[0]) * x - (line_x[1] - line_x[0]) * y + 
+                           line_x[1] * line_y[0] - line_y[1] * line_x[0]) / ((line_y[1] - line_y[0]) ** 2 + (line_x[1] - line_x[0]) ** 2) ** 0.5
+            distances.append(distance)
+        elbow_point = k_values[distances.index(max(distances))]
+
+        # Highlight the elbow point
+        ax.plot(elbow_point, wss_values[elbow_point - 1], 'ro')
+
+        # Display the plot in Streamlit
+        st.pyplot(fig)
+    plot_elbow_method(df['lat_lng'].to_list())
     
+    st.markdown("#### Silhouette score method")
+    st.write('''The silhouette score measures how well each data point in a dataset is matched to its own cluster compared to other clusters. 
+    It ranges from -1 to 1, with a higher score indicating better clustering. The score is computed for each data point, 
+    and the mean score across all data points is used to evaluate the clustering solution.''')
     
+    def get_silhouette_scores(coordinates_list):
+        # Load the dataset
+        coordinates_list = coordinates_list
+        X = np.array(coordinates_list)
+
+        # Define a range of k values to try
+        k_values = range(2, len(df))
+
+        # Compute the silhouette score for each value of k
+        silhouette_scores = []
+        for k in k_values:
+            model = KMeans(n_clusters=k)
+            labels = model.fit_predict(X)
+            silhouette = silhouette_score(X, labels)
+            silhouette_scores.append(silhouette)
+        return silhouette_scores
+
+    silhouette_scores = get_silhouette_scores(df['lat_lng'].to_list())
     
-    
+    st.success("Silhouette scores are calculated for different values of k (the number of clusters)!")
+    df_silhouette_scores = pd.DataFrame(silhouette_scores, columns=['Silhouette Scores'])
+    df_silhouette_scores['Number of clusters'] = range(2, len(df))
+    st.table(df_silhouette_scores)
