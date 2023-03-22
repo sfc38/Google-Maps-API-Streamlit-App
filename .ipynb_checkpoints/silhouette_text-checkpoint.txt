@@ -1,0 +1,5 @@
+The Silhouette Score is calculated as follows:
+1. For each data point i, the average distance between i and all other data points in the same cluster is calculated. This is called the intra-cluster distance and is denoted by a(i).
+2. For each data point i, the average distance between i and all other data points in the nearest neighboring cluster is calculated. This is called the nearest-cluster distance and is denoted by b(i).
+3. The Silhouette Score for each data point i is then calculated as (b(i) - a(i)) / max(a(i), b(i)).
+4. Finally, the Silhouette Score for the entire clustering is calculated as the average of the Silhouette Scores for all data points."

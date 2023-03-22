@@ -11,14 +11,22 @@ from random import random
 import plotly.graph_objs as go
 import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score
+import ast
 
 # Add a title to the sidebar
 st.sidebar.title("Welcome to my app!")
 
-# Add a note to the sidebar
-st.sidebar.write('''The slider below is used to select the number of clusters in Section 6 
-where clustering is applied. By adjusting the slider, you can specify the desired 
-number of groups to divide the addresses into.''')
+st.sidebar.write("Select the desired data set and then click the Upload Sample Data button to start the data loading process.")            
+
+# create a dropdown menu in the sidebar
+selected_option = st.sidebar.selectbox("Select a Sample Data", ["Demo Addresses", "NY Tourist Attractions"])
+
+# update the session state variable based on the selected option
+if selected_option == "Demo Addresses":
+    st.session_state.sample_input_file_name = "sample_addresses_with_geocode.csv"
+elif selected_option == "NY Tourist Attractions":
+    st.session_state.sample_input_file_name = "ny_tourist_attractions_with_geocode.csv"
+
 
 # upload the google maps api key
 if os.path.isfile("credentials.py"):
@@ -43,12 +51,15 @@ with st.container():
             else:
                 st.session_state.input_list.append(user_input)
     
+    # def add_from_file(address_list):
+    #     if "input_list" not in st.session_state:
+    #         st.session_state.input_list = address_list
+    #     else:
+    #         st.session_state.input_list += address_list
+            
     def add_from_file(address_list):
-        if "input_list" not in st.session_state:
-            st.session_state.input_list = address_list
-        else:
-            st.session_state.input_list += address_list
-
+        st.session_state.input_list = address_list
+       
     def select_all():
         if "input_list" in st.session_state:
             for i in range(len(st.session_state.input_list)):
@@ -99,8 +110,11 @@ with st.container():
     uploaded_file = st.file_uploader(text2, type="csv")
     
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
+   
+        st.session_state.is_sample = False
         
+        df = pd.read_csv(uploaded_file)
+         
         # check if there is only one column in the dataframe
         if len(df.columns) == 1:
             address_col = df.columns[0]
@@ -114,16 +128,31 @@ with st.container():
         else:
             print("No address column found")
 
-        add_from_file(address_list)
+        if 'is_data_uploaded' not in st.session_state or (not df.equals(st.session_state.uploaded_df)):
+            add_from_file(address_list)
+            st.session_state.is_data_uploaded = True
+            st.session_state.uploaded_df = df
+
     
     # NOTE: Remove this else part later or use another sample data
     else:
         if "input_list" not in st.session_state:
             
-            df = pd.read_csv('sample_addresses.csv')
+            st.session_state.is_sample = True
+           
+            df = pd.read_csv(st.session_state.sample_input_file_name)
             address_list = df['address'].tolist()
             add_from_file(address_list)
-            st.warning("No file uploaded. Sample data used. Remove if desired.")
+            st.warning('''No file uploaded. Sample data used. Remove by using 'Select All' and 'Remove Seleceted'buttons if desired. 
+            You can also upload your own file, it will remove the sample data''')
+
+if st.sidebar.button('Upload Sample Data'):
+    st.session_state.is_sample = True
+    df = pd.read_csv(st.session_state.sample_input_file_name)
+    address_list = df['address'].tolist()
+    add_from_file(address_list)
+
+with st.expander("Click to Show/Hide the Address Addition Box", expanded=True):        
 
     # Take user input (addresses)
     user_input = st.text_input("Enter an address and click 'Add Address' button:")
@@ -139,10 +168,9 @@ with st.container():
     with cols[3]:
         st.button('Remove Selected', on_click=remove_selected)
 
-with st.expander("Click to show/hide the addresses", expanded=True):        
     # Display the addresses
     display_addresses()
-        
+           
 # convert to coordinates and display as df        
 with st.container():
     st.subheader("2. Converting Addresses to Geographic Coordinates")
@@ -168,7 +196,27 @@ with st.container():
     if 'input_list' in st.session_state:     
         lat_lng_list = []
         for address in st.session_state.input_list:
-            latitude, longitude = geocode_address(address, google_API_KEY)
+            
+            # This section is only for sample data
+            if st.session_state.is_sample is True:
+                df_temp = pd.read_csv(st.session_state.sample_input_file_name)
+                if address in df_temp['address'].values:
+                    # locate the row in the DataFrame that corresponds to the given address
+                    row = df_temp.loc[df_temp['address'] == address]
+
+                    # extract the value in the 'lat_lng' column for the row
+                    lat_lng = row['lat_lng'].values[0]
+
+                    # convert the string to a list
+                    temp = ast.literal_eval(lat_lng)
+
+                    # extract the first element of the list
+                    latitude, longitude = temp[0], temp[1]
+                else:
+                    latitude, longitude = geocode_address(address, google_API_KEY)
+            else:
+                latitude, longitude = geocode_address(address, google_API_KEY)
+            
             if latitude == None:
                 st.warning("Please enter a valid address. Remove the invalid address from the list.")
                 break          
@@ -395,6 +443,11 @@ with st.container():
             
             # this is to fix sync issue
             rerun_flag = st.session_state.num_clusters
+            
+            # Add a note to the sidebar
+            st.sidebar.write('''The slider below is used to select the number of clusters in Section 6 
+            where clustering is applied. By adjusting the slider, you can specify the desired 
+            number of groups to divide the addresses into.''')
                 
             # Define your sidebar slider
             num_clusters_sidebar = st.sidebar.slider("Select the number of clusters:", min_value=2, max_value=len(df), 
@@ -451,7 +504,7 @@ with st.container():
             # Add circle markers for each centroid
             for i in range(len(centroids)):
                 center = centroids[i]
-                radius = miles_to_meters(max_distances[i]) + 1000
+                radius = miles_to_meters(max_distances[i]) + 500
                 folium.Circle(location=center, radius=radius, color='red', fill_color='red', fill_opacity=0.2).add_to(m)
             
             folium_static(m)
@@ -475,6 +528,33 @@ with st.container():
                 # Add a line from the address to its cluster center
                 folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
         
+            folium_static(m)
+            
+            # Map with circles and Lines
+            
+            m = create_map()
+            m = add_markers(m, df['lat_lng'], df['address'])
+            
+            # Add cluster center
+            for i in range(len(centroids)):
+                c = centroids[i]
+                add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
+            
+            # Add circle markers for each centroid
+            for i in range(len(centroids)):
+                center = centroids[i]
+                radius = miles_to_meters(max_distances[i]) + 500
+                folium.Circle(location=center, radius=radius, color='red', fill_color='red', fill_opacity=0.2).add_to(m)
+                
+            # Loop through the data and add lines from each address to its cluster center
+            for i in range(len(df)):
+                # Get the coordinates for the address and its cluster center
+                address_coords = df.loc[i, 'lat_lng']
+                center_coords = centroids[df.loc[i, 'cluster_label']]
+    
+                # Add a line from the address to its cluster center
+                folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
+            
             folium_static(m)
             
 # show center on the map            
@@ -537,20 +617,31 @@ with st.container():
 
         # Display the plot in Streamlit
         st.pyplot(fig)
-    plot_elbow_method(df['lat_lng'].to_list())
+    
+    if 'input_list' in st.session_state:
+        if len(df) > 0:
+            plot_elbow_method(df['lat_lng'].to_list())
     
     st.markdown("#### Silhouette score method")
     st.write('''The silhouette score measures how well each data point in a dataset is matched to its own cluster compared to other clusters. 
     It ranges from -1 to 1, with a higher score indicating better clustering. The score is computed for each data point, 
     and the mean score across all data points is used to evaluate the clustering solution.''')
     
+    # create an expander
+    with st.expander("Click to expand and see the method for calculating the Silhouette Score."):
+        # add content to the expander
+        with open("silhouette_text.txt") as f:
+            silhouette_text = f.read()
+        st.write(silhouette_text)
+    
     def get_silhouette_scores(coordinates_list):
         # Load the dataset
         coordinates_list = coordinates_list
         X = np.array(coordinates_list)
-
+        
         # Define a range of k values to try
-        k_values = range(2, len(df))
+        n = 10 if len(coordinates_list) > 10 else len(coordinates_list)
+        k_values = range(2, n)
 
         # Compute the silhouette score for each value of k
         silhouette_scores = []
@@ -559,11 +650,26 @@ with st.container():
             labels = model.fit_predict(X)
             silhouette = silhouette_score(X, labels)
             silhouette_scores.append(silhouette)
-        return silhouette_scores
-
-    silhouette_scores = get_silhouette_scores(df['lat_lng'].to_list())
+        return k_values, silhouette_scores
     
-    st.success("Silhouette scores are calculated for different values of k (the number of clusters)!")
-    df_silhouette_scores = pd.DataFrame(silhouette_scores, columns=['Silhouette Scores'])
-    df_silhouette_scores['Number of clusters'] = range(2, len(df))
-    st.table(df_silhouette_scores)
+    if 'input_list' in st.session_state:
+        if len(df) > 0:
+
+            k_values, silhouette_scores = get_silhouette_scores(df['lat_lng'].to_list())
+
+            st.success("Silhouette scores are calculated for different values of k (the number of clusters)!")
+            df_silhouette_scores = pd.DataFrame({'Number of clusters': k_values, 'Silhouette Scores': silhouette_scores})
+
+            st.write(df_silhouette_scores.set_index('Number of clusters'), index=False)
+
+            # find the row with the maximum Silhouette Score
+            max_row = df_silhouette_scores.loc[df_silhouette_scores['Silhouette Scores'].idxmax()]
+
+            # print the maximum Silhouette Score and its associated number of clusters
+            st.markdown('Maximum Silhouette Score: **{}**'.format(max_row['Silhouette Scores']))
+            st.markdown('Optimal Number of clusters: **{}**'.format(int(max_row['Number of clusters'])))
+
+            st.write('''The optimal number of clusters is selected based on the maximum silhouette score. 
+            Remember that there is no one-size-fits-all approach to selecting the optimal number of clusters, 
+            as it will depend on the specifics of your dataset and your goals for the analysis. 
+            You can also choose the cluster number that has the second-highest silhouette score.''')
