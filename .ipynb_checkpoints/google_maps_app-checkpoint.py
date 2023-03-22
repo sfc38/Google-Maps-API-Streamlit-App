@@ -37,8 +37,18 @@ else:
     
 # title and introduction
 with st.container():
-    st.title("Google Maps API Demo Streamlit App")
-    st.write("Hello! This is Fatih. The purpose of this application is to explore the Google Maps API.")  
+    st.title("Interactive Map Clustering App")
+    st.write("Hello! This is Fatih. The purpose of this application is to explore the Google Maps API.")
+    
+    st.write('''This application enables you to identify the central point of specified locations and 
+    categorize addresses according to their proximity to one another. Potential use cases include determining 
+    a convenient meeting spot for friends, selecting a strategic warehouse location for businesses, 
+    and enhancing vacation or trip planning. The app not only clusters your desired destinations 
+    but also recommends the ideal number of groupings, allowing you to effectively plan the duration of 
+    your stay or choose suitable accommodations.''')
+    
+    st.write('''Choose sample data from the left sidebar and click 'Upload Data' to view the analysis. 
+    Adjust the slider to create the desired number of groups, and the app will conveniently recommend the optimal number of clusters at the end.''')
 
 # user input and display                                       
 with st.container():
@@ -151,6 +161,19 @@ if st.sidebar.button('Upload Sample Data'):
     df = pd.read_csv(st.session_state.sample_input_file_name)
     address_list = df['address'].tolist()
     add_from_file(address_list)
+    
+    
+    # This handles when data switched and reset the k
+    # Define the default value for the slider
+    default_value = 4
+
+    # Set the default value to the length of the DataFrame if it's smaller
+    if len(df) < default_value:
+        default_value = len(df)
+
+    # Initialize session state
+    if "num_clusters" in st.session_state:
+        st.session_state.num_clusters = default_value
 
 with st.expander("Click to Show/Hide the Address Addition Box", expanded=True):        
 
@@ -225,8 +248,18 @@ with st.container():
         
         # Create a pandas DataFrame with columns for the address and latitude and longitude tuples
         df = pd.DataFrame(lat_lng_list, columns=["address", "lat_lng"])
-        # Display the latitude and longitude of each address to the user
-        st.write(df)
+        
+        st.success("Geographic coordinates have been obtained.")
+        
+        with st.expander("Click to show the table that display the latitude and longitude of each address"):        
+
+            # Display the latitude and longitude of each address to the user
+            st.write(df.head(20))
+            st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", 
+                        unsafe_allow_html=True)
+
+
+        
         
 # show locations on map        
 with st.container():
@@ -320,7 +353,9 @@ with st.container():
             st.markdown(text, unsafe_allow_html=True)
             
             df['distance_center_miles'] = df['lat_lng'].apply(lambda x: haversine_distance(x[0], x[1], center_lat, center_lon))
-            st.write(df)
+            st.write(df.head(20))
+            st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", 
+                    unsafe_allow_html=True)
             
 # show center on the map            
 with st.container():       
@@ -446,8 +481,7 @@ with st.container():
             
             # Add a note to the sidebar
             st.sidebar.write('''The slider below is used to select the number of clusters in Section 6 
-            where clustering is applied. By adjusting the slider, you can specify the desired 
-            number of groups to divide the addresses into.''')
+            where clustering is applied.''')
                 
             # Define your sidebar slider
             num_clusters_sidebar = st.sidebar.slider("Select the number of clusters:", min_value=2, max_value=len(df), 
@@ -479,7 +513,9 @@ with st.container():
             df['cluster_center'] = df['cluster_label'].apply(lambda x: [round(centroids[x][0], 6), round(centroids[x][1], 6)])
             df = df.sort_values('cluster_label')
             
+            st.markdown("#### Clustered Locations Table")
             # Show clustered table
+            st.write('The table below displays addresses organized into color-coded groups.')
             create_cluster_table(df, 'cluster_label')
             
             # Calculate the distances from cluster centers
@@ -487,49 +523,57 @@ with st.container():
                                                                             x['lat_lng'][1], 
                                                                             x['cluster_center'][0], 
                                                                             x['cluster_center'][1]), axis=1)
-            
-            st.write(df[['address', 'cluster_label', 'distance_cluster_center_miles']])
+            st.markdown("#### Distances to the Center of Each Cluster")
+            st.write("Below is a table that shows the cluster numbers of locations and the distances to the center of each cluster.")
+            st.write(df[['address', 'cluster_label', 'distance_cluster_center_miles']].head(20))
+            st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", 
+                    unsafe_allow_html=True)
             
             max_distances = get_max_by_group(df, 'cluster_label', 'distance_cluster_center_miles')
             
-            # Map with Circles
-            m = create_map()
-            m = add_markers(m, df['lat_lng'], df['address'])
-            
-            # Add cluster center
-            for i in range(len(centroids)):
-                c = centroids[i]
-                add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
-            
-            # Add circle markers for each centroid
-            for i in range(len(centroids)):
-                center = centroids[i]
-                radius = miles_to_meters(max_distances[i]) + 500
-                folium.Circle(location=center, radius=radius, color='red', fill_color='red', fill_opacity=0.2).add_to(m)
-            
-            folium_static(m)
             
             
-            # Map with Lines
-            m = create_map()
-            m = add_markers(m, df['lat_lng'], df['address'])
+#             # Map with Circles
+#             m = create_map()
+#             m = add_markers(m, df['lat_lng'], df['address'])
             
-            # Add cluster center
-            for i in range(len(centroids)):
-                c = centroids[i]
-                add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
-                
-            # Loop through the data and add lines from each address to its cluster center
-            for i in range(len(df)):
-                # Get the coordinates for the address and its cluster center
-                address_coords = df.loc[i, 'lat_lng']
-                center_coords = centroids[df.loc[i, 'cluster_label']]
+#             # Add cluster center
+#             for i in range(len(centroids)):
+#                 c = centroids[i]
+#                 add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
+            
+#             # Add circle markers for each centroid
+#             for i in range(len(centroids)):
+#                 center = centroids[i]
+#                 radius = miles_to_meters(max_distances[i]) + 500
+#                 folium.Circle(location=center, radius=radius, color='red', fill_color='red', fill_opacity=0.2).add_to(m)
+            
+#             folium_static(m)
+            
     
-                # Add a line from the address to its cluster center
-                folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
-        
-            folium_static(m)
             
+#             # Map with Lines
+#             m = create_map()
+#             m = add_markers(m, df['lat_lng'], df['address'])
+            
+#             # Add cluster center
+#             for i in range(len(centroids)):
+#                 c = centroids[i]
+#                 add_center_marker(m, c[0], c[1], popup='Cluster {} Center Point'.format(i))
+                
+#             # Loop through the data and add lines from each address to its cluster center
+#             for i in range(len(df)):
+#                 # Get the coordinates for the address and its cluster center
+#                 address_coords = df.loc[i, 'lat_lng']
+#                 center_coords = centroids[df.loc[i, 'cluster_label']]
+    
+#                 # Add a line from the address to its cluster center
+#                 folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
+        
+#             folium_static(m)
+            
+    
+    
             # Map with circles and Lines
             
             m = create_map()
@@ -555,6 +599,8 @@ with st.container():
                 # Add a line from the address to its cluster center
                 folium.PolyLine(locations=[address_coords, center_coords], color='red').add_to(m)
             
+            st.markdown("#### Clusters on Map")
+            st.write("Use the slider to change the number of clusters")
             folium_static(m)
             
 # show center on the map            
@@ -636,7 +682,6 @@ with st.container():
     
     def get_silhouette_scores(coordinates_list):
         # Load the dataset
-        coordinates_list = coordinates_list
         X = np.array(coordinates_list)
         
         # Define a range of k values to try
