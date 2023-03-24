@@ -1,4 +1,5 @@
 import streamlit as st
+import my_functions
 import pandas as pd
 import numpy as np
 import requests
@@ -12,6 +13,7 @@ import plotly.graph_objs as go
 import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score
 import ast
+import itertools
 
 # Add a title to the sidebar
 st.sidebar.title("Welcome to my app!")
@@ -38,14 +40,6 @@ else:
 # title and introduction
 with st.container():
     st.title("Interactive Map Clustering App")
-    st.write("Hello! This is Fatih. The purpose of this application is to explore the Google Maps API.")
-    
-    st.write('''This application enables you to identify the central point of specified locations and 
-    categorize addresses according to their proximity to one another. Potential use cases include determining 
-    a convenient meeting spot for friends, selecting a strategic warehouse location for businesses, 
-    and enhancing vacation or trip planning. The app not only clusters your desired destinations 
-    but also recommends the ideal number of groupings, allowing you to effectively plan the duration of 
-    your stay or choose suitable accommodations.''')
     
     st.write('''Choose sample data from the left sidebar and click 'Upload Data' to view the analysis. 
     Adjust the slider to create the desired number of groups, and the app will conveniently recommend the optimal number of clusters at the end.''')
@@ -110,14 +104,8 @@ with st.container():
         return None
     
     # Take user input bulk (addresses)
-    text1 = '''To add an address, type the address the box below and click 'Add Address'. 
-    To add multiple addresses, do the same steps for each new one. 
-    You can also bulk upload addresses with a CSV file.'''
-    text2 = '''Choose a CSV file that has the addresses, one column should have 'Address' header. 
-    Note: You can manually enter the addresses as well.'''
-    
-    st.write(text1)
-    uploaded_file = st.file_uploader(text2, type="csv")
+    text = '''Upload a CSV file. Make sure column header is 'Address'. Note: You can manually enter the addresses as well.'''
+    uploaded_file = st.file_uploader(text, type="csv")
     
     if uploaded_file is not None:
    
@@ -153,8 +141,7 @@ with st.container():
             df = pd.read_csv(st.session_state.sample_input_file_name)
             address_list = df['address'].tolist()
             add_from_file(address_list)
-            st.warning('''No file uploaded. Sample data used. Remove by using 'Select All' and 'Remove Seleceted'buttons if desired. 
-            You can also upload your own file, it will remove the sample data''')
+            st.warning('''No file uploaded. Sample data used. You can remove addresses by using 'Remove Seleceted' button.''')
 
 if st.sidebar.button('Upload Sample Data'):
     st.session_state.is_sample = True
@@ -178,7 +165,7 @@ if st.sidebar.button('Upload Sample Data'):
 with st.expander("Click to Show/Hide the Address Addition Box", expanded=True):        
 
     # Take user input (addresses)
-    user_input = st.text_input("Enter an address and click 'Add Address' button:")
+    user_input = st.text_input("Enter an address and click 'Add Address' button. To add multiple addresses, do the same steps for each new one.")
 
     # Create the buttons in a horizontal layout
     cols = st.columns(4)
@@ -258,8 +245,6 @@ with st.container():
             st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", 
                         unsafe_allow_html=True)
 
-
-        
         
 # show locations on map        
 with st.container():
@@ -294,12 +279,50 @@ with st.container():
         map_obj.fit_bounds(map_bounds)
 
         return map_obj
+    
+    def find_closest_and_furthest_pairs(df, distance_func):
+
+        # Create all possible pairs of points
+        pairs = list(itertools.combinations(df['lat_lng'], 2))
+
+        # Calculate distances between each pair of points
+        distances = [distance_func(p[0][0], p[0][1], p[1][0], p[1][1]) for p in pairs]
+
+        # Find closest and furthest distances
+        closest_distance = min(distances)
+        closest_pair = pairs[distances.index(closest_distance)]
+        furthest_distance = max(distances)
+        furthest_pair = pairs[distances.index(furthest_distance)]
+
+        return (closest_distance, closest_pair, furthest_distance, furthest_pair)
+    
+    def get_address_from_df(df, coord):
+        adress = df['address'][df['lat_lng'].apply(lambda x: x == coord)].to_string(index=False)
+        return adress
 
     if 'input_list' in st.session_state:
         if len(df) > 0:
+            
+            (closest_distance, 
+            closest_pair, 
+            furthest_distance, 
+            furthest_pair) = find_closest_and_furthest_pairs(df, my_functions.haversine_distance)
+            
+            # middle = my_functions.calculate_center_coords(furthest_pair)
+            # r = furthest_distance * 1609.34 / 2 + 10
+            
             m = create_map()
             m = add_markers(m, df['lat_lng'], df['address'])
+            # folium.Circle(location=middle, radius=r, color='red', fill_color='red', fill_opacity=0.1).add_to(m)
             folium_static(m)
+            
+            closest_pair_addresses = (get_address_from_df(df, closest_pair[0]), get_address_from_df(df, closest_pair[1]))
+            furthest_pair_addresses = (get_address_from_df(df, furthest_pair[0]), get_address_from_df(df, furthest_pair[1]))
+            
+            st.write(f"Closest euclidean distance: {closest_distance:.2f} mile")
+            st.write(f"Closest pair: {closest_pair_addresses[0]} - {closest_pair_addresses[1]}")
+            st.write(f"Furthest euclidean distance: {furthest_distance:.2f} mile")
+            st.write(f"Furthest pair: {furthest_pair_addresses[0]} - {furthest_pair_addresses[1]}")
 
 # find the center, show distances            
 with st.container():
