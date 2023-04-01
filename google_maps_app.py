@@ -320,7 +320,7 @@ with st.sidebar:
 
     # update the session state variable based on the selected option
     if selected_option == "Demo Addresses":
-        st.session_state.sample_input_file_name = "sample_addresses_with_geocode.csv"
+        st.session_state.sample_input_file_name = "library_addresses_with_geocode.csv"
     elif selected_option == "NY Tourist Attractions":
         st.session_state.sample_input_file_name = "ny_tourist_attractions_with_geocode.csv"
             
@@ -344,7 +344,7 @@ with st.container():
     st.subheader("1. Enter Addresses")
     
     # Take user input bulk (addresses)
-    text = "Upload a CSV file. Make sure column header is 'Address'. Note: You can manually enter the addresses as well."
+    text = "Upload a CSV file. Make sure column header is 'address'. Note: You can manually enter the addresses as well."
     uploaded_file = st.file_uploader(text, type="csv")
     
     if uploaded_file is not None:
@@ -384,7 +384,7 @@ with st.container():
 
             
 # Address from manual input    
-with st.expander("Click to Show/Hide the Address Addition Box", expanded=False):        
+with st.expander("Click to Show/Hide the Address Addition Box", expanded=True):        
 
     # Take user input (addresses)
     user_input = st.text_input('''Enter an address and click 'Add Address' button. 
@@ -448,8 +448,7 @@ with st.container():
 
             # Display the latitude and longitude of each address to the user
             st.write(df.head(20))
-            st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", 
-                        unsafe_allow_html=True)
+            st.markdown("<small> Note: If the data length is greater than 20, only the first 20 rows will be displayed. </small>", unsafe_allow_html=True)
 
         
 # show locations on map        
