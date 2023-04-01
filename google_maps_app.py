@@ -323,8 +323,10 @@ with st.sidebar:
         st.session_state.sample_input_file_name = "library_addresses_with_geocode.csv"
     elif selected_option == "NY Tourist Attractions":
         st.session_state.sample_input_file_name = "ny_tourist_attractions_with_geocode.csv"
+        
+    upload_demo_button = st.button('Upload Sample Data')
             
-    if st.button('Upload Sample Data'):
+    if upload_demo_button:
         st.session_state.is_sample = True
         df_sample = pd.read_csv(st.session_state.sample_input_file_name)
         address_list = df_sample['address'].tolist()
@@ -333,6 +335,10 @@ with st.sidebar:
     
 # Title and introduction
 with st.container():
+    
+    if upload_demo_button:
+        st.success("Demo data uploaded, scroll down to see the anlysis")
+    
     st.title("Interactive Map Clustering App")
     st.write('''Choose sample data from the left sidebar and click 'Upload Data' to view the analysis. 
     Adjust the slider to create the desired number of groups, and the app will conveniently recommend 
@@ -414,20 +420,23 @@ with st.container():
         for address in st.session_state.input_list:
             
             # This section is only for sample data
-            if st.session_state.is_sample is True:
-                df_temp = pd.read_csv(st.session_state.sample_input_file_name)
-                if address in df_temp['address'].values:
-                    # locate the row in the DataFrame that corresponds to the given address
-                    row = df_temp.loc[df_temp['address'] == address]
+            if 'is_sample' in st.session_state:
+                if st.session_state.is_sample is True:
+                    df_temp = pd.read_csv(st.session_state.sample_input_file_name)
+                    if address in df_temp['address'].values:
+                        # locate the row in the DataFrame that corresponds to the given address
+                        row = df_temp.loc[df_temp['address'] == address]
 
-                    # extract the value in the 'lat_lng' column for the row
-                    lat_lng = row['lat_lng'].values[0]
+                        # extract the value in the 'lat_lng' column for the row
+                        lat_lng = row['lat_lng'].values[0]
 
-                    # convert the string to a list
-                    temp = ast.literal_eval(lat_lng)
+                        # convert the string to a list
+                        temp = ast.literal_eval(lat_lng)
 
-                    # extract the first element of the list
-                    latitude, longitude = temp[0], temp[1]
+                        # extract the first element of the list
+                        latitude, longitude = temp[0], temp[1]
+                    else:
+                        latitude, longitude = geocode_address(address, google_API_KEY)
                 else:
                     latitude, longitude = geocode_address(address, google_API_KEY)
             else:
