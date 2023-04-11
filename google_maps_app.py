@@ -378,15 +378,15 @@ with st.container():
             st.session_state.uploaded_df = df_input
    
     # NOTE: Remove this else part later or use another sample data
-#     else:
-#         if "input_list" not in st.session_state:
+    else:
+        if "input_list" not in st.session_state:
             
-#             st.session_state.is_sample = True
+            st.session_state.is_sample = True
            
-#             df_default = pd.read_csv("ny_tourist_attractions_with_geocode.csv")
-#             address_list = df_default['address'].tolist()
-#             add_from_file(address_list)
-#             st.warning('''No file uploaded. Sample data used. You can remove addresses by using 'Remove Seleceted' button.''')
+            df_default = pd.read_csv("ny_tourist_attractions_with_geocode.csv")
+            address_list = df_default['address'].tolist()
+            add_from_file(address_list)
+            st.warning('''No file uploaded. Sample data used. You can remove addresses by using 'Remove Seleceted' button.''')
 
             
 # Address from manual input    
